@@ -9,7 +9,7 @@
 function pbIDB(){return new Promise((res,rej)=>{const r=indexedDB.open('plateandbar',1);r.onupgradeneeded=()=>r.result.createObjectStore('blobs');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 window.LOCAL_ASSETS={async upload(blob){const id='local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);const db=await pbIDB();
   await new Promise((res,rej)=>{const tx=db.transaction('blobs','readwrite');tx.objectStore('blobs').put(blob,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});return{id,url:'blob/'+id+'.jpg'}}};
-window.PB_VER='ae9348ef';
+window.PB_VER='bd5a8874';
 // check for a new version on every open; when the new service worker takes over, reload once onto it
 if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let done=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!done){done=true;location.reload()}});
@@ -599,7 +599,7 @@ h1 .cico{width:40px;height:40px}
 @media (max-width:560px){.hgrid{gap:3px}.hgc{height:16px}.hgd{font-size:.55rem}.wrow{gap:12px}.wbottle{width:74px}.ciphotos{gap:6px}.phcmp{gap:6px}}
 
 /* v14: label scanning, phone input zoom */
-@media (max-width:720px){input,select,textarea{font-size:16px}}
+@media (max-width:720px){input,select,textarea{font-size:16px}main.wrap{padding-bottom:calc(130px + env(safe-area-inset-bottom,0px))}}
 .scanbox{display:flex;flex-direction:column;gap:12px;align-items:stretch}
 .scanph{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:26px 16px;border:1.5px dashed rgba(255,140,60,.45);border-radius:16px;background:radial-gradient(ellipse at center,rgba(255,90,40,.10),transparent 70%);color:#c4ccd8}
 .scanph .cico{width:64px;height:64px;margin:0}.scanph b{color:#fff;font-size:1.05rem}.scanph small{color:#8e9bb1}
@@ -2022,7 +2022,7 @@ function vToday(){const d=S.ui.date,T=targetsFor(d),train=isTraining(d),isToday=
   for(const cat of MEALS){const logged=day[cat]||[];const planned=S.nutrition.planType==='structured'?plannedFor(d,cat):[];const mt=sumM(logged);
     h+=`<div class="meal"><div class="mealhead" style="background-image:url(${MEAL_ART[cat]})"><h3>${MEAL_LABEL[cat]} <span class="muted sm mono">${logged.length?fmt(mt.kcal)+' kcal':''}</span></h3><div class="tools">
       ${S.nutrition.planType==='flexible'&&(S.nutrition.flex[cat]||[]).length?`<button class="btn ghost sm" data-act="flexPick" data-cat="${cat}">Options</button>`:''}
-      <button class="btn ghost sm" data-act="addFood" data-cat="${cat}">+ Add</button></div></div>`;
+      <button class="btn ghost sm scanq" data-act="scanFor" data-cat="${cat}" aria-label="Scan a nutrition label for ${MEAL_LABEL[cat]}">📷 Scan</button><button class="btn ghost sm" data-act="addFood" data-cat="${cat}">+ Add</button></div></div>`;
     planned.forEach((it,i)=>{const r=getRecipe(it.r);if(!r)return;const key=cat+'-'+i;const m=scaleM(recipeMacros(r),it.sv);const done=logged.some(e=>e.key===key);
       if(done)return;h+=`<div class="lrow planned"><button class="figbtn" style="width:52px;height:52px;padding:0" data-act="viewRecipe" data-id="${r.id}" aria-label="View ${esc(r.name)}">${thumbHTML(r)}</button><div class="grow"><b>${esc(r.name)}</b>${macroTxt(m)}<small>${it.sv} serving${it.sv==1?'':'s'} · planned</small></div><button class="btn sm" data-act="logPlanned" data-cat="${cat}" data-i="${i}">Log</button></div>`});
     logged.forEach(e=>{const lr=e.rid?getRecipe(e.rid):null;h+=`<div class="lrow">${lr?thumbHTML(lr,'thumb sm'):''}<div class="grow"><b>${esc(e.name)}</b>${macroTxt(e)}${e.qty?`<small>${esc(e.qty)}</small>`:''}</div><button class="iconbtn" data-act="unlog" data-cat="${cat}" data-id="${e.id}" aria-label="Remove ${esc(e.name)}">✕</button></div>`});
@@ -2324,7 +2324,7 @@ function closeModal(){S.modal=S.modalStack.pop()||null;renderModal()}
 function closeAll(){S.modal=null;S.modalStack=[];renderModal()}
 function renderModal(){const box=$('#modal');if(!S.modal){box.hidden=true;return}box.hidden=false;const m=S.modal;
   const f={exInfo:mExInfo,picker:mPicker,exEdit:mExEdit,addFood:mAddFood,recipe:mRecipe,recipeEdit:mRecipeEdit,planCell:mPlanCell,planAdd:mPlanAdd,gen:mGen,summary:mSummary,settings:mSettings,schedule:mSchedule,flexPick:mFlexPick,foodEdit:mFoodEdit,hypDay:mHypDay,restTimer:mRestTimer}[m.kind];
-  $('#sheet').innerHTML=f(m);const first=$('#sheet [data-autofocus]');if(first)first.focus();collectFigs()}
+  $('#sheet').innerHTML=f(m);const first=$('#sheet [data-autofocus]');if(first&&!matchMedia('(pointer:coarse)').matches)first.focus({preventScroll:true});collectFigs()}
 const mhead=t=>`<div class="mhead"><h2>${t}</h2><button class="iconbtn" data-act="mClose" aria-label="Close">✕</button></div>`;
 
 function mPicker(m){const muscles=[...new Set(allEx().map(e=>e.muscle))];
@@ -2637,6 +2637,7 @@ A.sumSave=()=>{const{s,k}=findSess(S.modal.id);if(s){s.notes=$('#sumNotes').valu
 A.sessDel=()=>{const{s,k}=findSess(S.modal.id);if(s){S.wlog[k].sessions=S.wlog[k].sessions.filter(x=>x.id!==s.id);save('wlog-'+k)}closeModal();render()};
 // food logging
 A.addFood=el=>openModal({kind:'addFood',cat:el.dataset.cat,tab:'recipes',q:''});
+A.scanFor=el=>{const h=new Date().getHours();const cat=el.dataset.cat||(h<10?'breakfast':h<14?'lunch':h<20?'dinner':'snack');S.ui.date=S.ui.date||todayISO();openModal({kind:'addFood',cat,tab:'scan',q:''})};
 A.afTab=el=>{S.modal.tab=el.dataset.v;S.modal.q='';renderModal()};
 Q.af=el=>{S.modal.q=el.value;$('#afList').innerHTML=afList(S.modal)};
 A.afRecipe=el=>{const r=getRecipe(el.dataset.id);const sv=num($('#sv-'+r.id).value)||1;const cat=S.modal.cat;logFood(S.ui.date,cat,{name:r.name,qty:`${sv} serving${sv==1?'':'s'}`,rid:r.id,...scaleM(recipeMacros(r),sv)});closeModal();render();toast('Logged '+r.name)};
@@ -2773,7 +2774,7 @@ function trainHero(sub){const H=S.library.hyp;const all=allSessions();
     sub:sub==='exercises'?'Every exercise with a rendered anatomy photo, the muscles it works and step-by-step coaching.':'Build sessions with supersets, %1RM, intervals and AMRAPs.',stats:[[all.length,'sessions logged'],[weekSessions(),'this week'],[allEx().length,'exercises']]})}
 function foodHero(){const d=todayISO(),T=targetsFor(d),day=foodDay(d,false),tot=sumM(MEALS.flatMap(m=>day[m]||[]));
   return heroHTML('food',{eyebrow:'Nutrition',title:'Fuel the build',sub:T?`${isTraining(d)?'Training':'Rest'}-day target: ${fmt(T.kcal)} kcal · ${T.p} g protein.`:'Set your targets and the planner builds meals around them.',
-    stats:T?[[fmt(tot.kcal)+' / '+fmt(T.kcal),'kcal today'],[fmt(tot.p)+' / '+T.p+' g','protein'],[fmt(tot.c)+' g','carbs'],[fmt(tot.f)+' g','fat']]:[]})}
+    stats:T?[[fmt(tot.kcal)+' / '+fmt(T.kcal),'kcal today'],[fmt(tot.p)+' / '+T.p+' g','protein'],[fmt(tot.c)+' g','carbs'],[fmt(tot.f)+' g','fat']]:[],extra:'<button class="btn" data-act="scanFor">📷 Scan a food label</button>'})}
 // rest timer actions
 A.restOpen=()=>openModal({kind:'restTimer'});
 A.restGo=el=>{closeAll();startRest(+el.dataset.s)};
