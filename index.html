@@ -593,6 +593,19 @@ h1 .cico{width:40px;height:40px}
 .enr{display:flex;gap:5px}.enr button{width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#c4ccd8;font-weight:700;cursor:pointer}.enr button.on{background:linear-gradient(135deg,#ffb347,#ff3d2e);color:#111;border-color:transparent;box-shadow:0 0 12px rgba(255,90,40,.5)}
 .spbtns{width:100%;justify-content:center;margin-top:6px}.spgo{flex:1;max-width:280px;padding:14px;font-size:1.05rem}
 @media (max-width:560px){.hgrid{gap:3px}.hgc{height:16px}.hgd{font-size:.55rem}.wrow{gap:12px}.wbottle{width:74px}.ciphotos{gap:6px}.phcmp{gap:6px}}
+
+/* v14: label scanning, phone input zoom */
+@media (max-width:720px){input,select,textarea{font-size:16px}}
+.scanbox{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.scanph{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:26px 16px;border:1.5px dashed rgba(255,140,60,.45);border-radius:16px;background:radial-gradient(ellipse at center,rgba(255,90,40,.10),transparent 70%);color:#c4ccd8}
+.scanph .cico{width:64px;height:64px;margin:0}.scanph b{color:#fff;font-size:1.05rem}.scanph small{color:#8e9bb1}
+.scanimg{width:100%;max-height:340px;object-fit:contain;border-radius:14px;background:#0b0f17}.scanthumb{width:100%;max-height:150px;object-fit:cover;border-radius:12px;opacity:.85}
+.scanbtns{justify-content:center}.scanbusy{display:flex;align-items:center;gap:10px;justify-content:center;color:#fff;font-weight:600}
+.spinner{width:20px;height:20px;border-radius:50%;border:3px solid rgba(255,140,60,.25);border-top-color:#ff7a3c;animation:spn .8s linear infinite}@keyframes spn{to{transform:rotate(360deg)}}
+.scanerr{color:#ffb347;margin:0;text-align:center}.scansrc{font-size:.8rem;padding:6px 10px;border-radius:10px;background:rgba(92,225,255,.08);color:#9fe9ff}.scansrc.manual{background:rgba(255,255,255,.05);color:#c4ccd8}
+.sdtbl{width:100%;border-collapse:collapse}.sdtbl th{font-size:.75rem;color:#8e9bb1;text-align:center;padding:4px}.sdtbl td{padding:4px}.sdtbl td:first-child{color:#c4ccd8;font-weight:600;white-space:nowrap}.sdtbl input{width:100%;text-align:center}
+.sdeat{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;padding:10px 12px;border-radius:14px;background:rgba(255,110,40,.08);border:1px solid rgba(255,140,60,.25)}.sdeat label{flex:1;min-width:180px}
+.sdtot{font:700 1rem var(--mono,monospace);color:#fff}
 </style>
 
 <div id="bgfx" aria-hidden="true"></div><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#ff3d2e"/></linearGradient></defs></svg>
@@ -1230,7 +1243,7 @@ function bulkCard(){const p=S.profile,T=p.targets,bw=+p.weight||((S.body.entries
       else if(r>.6)h+=`<div class="tipbox warn"><b>Gaining fast.</b> Above about 0.5% a week, more of the gain is fat. Trim about 150 kcal. <button class="btn sm" data-act="bulkAdj" data-k="-150">Remove 150 kcal</button></div>`;
       else h+=`<div class="tipbox good"><b>On track.</b> A steady 0.1–0.6% a week is the lean-gain sweet spot. Keep targets as they are.</div>`}
     else h+=`<small>Weigh in 3+ mornings a week (after the toilet, before eating) in Progress. After two weeks, this card tells you whether to adjust calories.</small>`}
-  return h+`<div class="row"><button class="btn ${T?'ghost ':''}sm" data-act="hypMacros">${T?'Recalculate lean-bulk targets':'Set lean-bulk targets'}</button><button class="btn ghost sm" data-act="goTargets">Open targets</button></div></div>`}
+  return h+`<div class="row"><button class="btn ${T?'ghost ':''}sm" data-act="hypMacros">${T?'Recalculate lean-bulk targets':'Set lean-bulk targets'}</button><button class="btn ghost sm" data-act="toDaily">Edit daily targets ↑</button></div></div>`}
 
 function vBuild(){const H=S.library.hyp;
   let h='';
@@ -1885,11 +1898,12 @@ function docNames(){return['profile','library','calendar','nutrition','body','ga
 function getDoc(n){if(n.startsWith('wlog-'))return S.wlog[n.slice(5)];if(n.startsWith('food-'))return S.food[n.slice(5)];return S[n]}
 function applyDocs(map){for(const [n,v] of Object.entries(map)){if(n.startsWith('wlog-'))S.wlog[n.slice(5)]=v;else if(n.startsWith('food-'))S.food[n.slice(5)]=v;else if(['profile','library','calendar','nutrition','body','garmin','habits'].includes(n))S[n]=v}}
 
-let ASSETS=null;
+let ASSETS=null,SAMPLE=null;
 const Store={db:null,base:null,mode:'local',timers:{},busy:{},again:{},
   async init(){
     let c=null;for(let i=0;i<30&&!c;i++){if(window.claude&&window.claude.use)c=window.claude;else await new Promise(r=>setTimeout(r,100))}
     if(!c){ASSETS=window.LOCAL_ASSETS||null;return}
+    c.use('sample').then(s=>{SAMPLE=s||null}).catch(()=>{});
     try{const [db,user,assets]=await Promise.all([c.use('db'),c.use('user'),c.use('assets')]);ASSETS=assets||null;
       if(db&&user){const id=await user.id();if(id){this.db=db;this.base='data/users/'+id;this.mode='cloud'}}}catch(e){}
   },
@@ -2219,7 +2233,7 @@ function vTargets(){const p=S.profile;if(!S.ui.td)initTD();const td=S.ui.td,g=S.
   const blk=(key,title)=>{const b=td[key];return`<div class="card"><h3>${title}</h3>${g?`<div class="fgrid"><label>Protein g<input type="number" data-td="${key}.p" value="${b.p}"></label><label>Carbs g<input type="number" data-td="${key}.c" value="${b.c}"></label><label>Fat g<input type="number" data-td="${key}.f" value="${b.f}"></label></div>`
     :`<div class="fgrid"><label>Calories<input type="number" data-td="${key}.kcal" value="${b.kcal}"></label><label>Protein %<input type="number" data-td="${key}.pp" value="${b.pp}"></label><label>Carbs %<input type="number" data-td="${key}.pc" value="${b.pc}"></label><label>Fat %<input type="number" data-td="${key}.pf" value="${b.pf}"></label></div>`}
     <div class="calc" id="tcalc-${key}">${tdText(key)}</div></div>`};
-  h+=`<div class="card"><div class="cardhead"><h2>Daily targets</h2><div class="seg"><button class="${g?'on':''}" data-act="tmode" data-v="g">Grams</button><button class="${g?'':'on'}" data-act="tmode" data-v="pct">Percent</button></div></div>
+  h+=`<div class="card" id="dailyTargets"><div class="cardhead"><h2>Daily targets</h2><div class="seg"><button class="${g?'on':''}" data-act="tmode" data-v="g">Grams</button><button class="${g?'':'on'}" data-act="tmode" data-v="pct">Percent</button></div></div>
     <label>Track<select data-p="macroMode"><option value="all" ${p.macroMode==='all'?'selected':''}>All macros</option><option value="pk" ${p.macroMode==='pk'?'selected':''}>Protein and calories</option><option value="kcal" ${p.macroMode==='kcal'?'selected':''}>Calories only</option></select></label>
     <div class="tcards">${blk('train',td.useRest?'Training days':'Every day')}${td.useRest?blk('rest','Rest days'):''}</div>
     <label class="inline"><input type="checkbox" data-c="useRest" ${td.useRest?'checked':''}> Use different targets on rest days</label>
@@ -2337,10 +2351,57 @@ function mExEdit(m){const d=m.draft;const ex=getEx(d.id);const orm=d.id&&!m.isNe
   ${(d.cat||ex.cat)==='strength'?`<label>Manual 1RM override (${U()})<input type="number" id="exORM" value="${esc(d.oneRM||'')}" placeholder="${orm?'Estimated from logs: '+r1(orm):'Leave blank to estimate from your logs'}"></label>`:''}
   <div class="row"><button class="btn" data-act="exSave">Save</button>${d.custom&&!m.isNew?`<button class="btn ghost danger" data-act="exDel" data-confirm="1">Delete exercise</button>`:''}</div></div>`}
 
-function mAddFood(m){const tabs=[['recipes','Recipes'],['foods','Foods'],['quick','Quick add']];
+function mAddFood(m){const tabs=[['recipes','Recipes'],['foods','Foods'],['scan','📷 Scan label'],['quick','Quick add']];
   let h=mhead('Add to '+MEAL_LABEL[m.cat])+`<div class="seg">${tabs.map(([k,v])=>`<button class="${m.tab===k?'on':''}" data-act="afTab" data-v="${k}">${v}</button>`).join('')}</div>`;
+  if(m.tab==='scan')return h+scanTab(m);
   if(m.tab==='quick')return h+`<div class="form"><label>Name<input id="qaName" placeholder="e.g. Flat white" data-autofocus></label><div class="fgrid"><label>Calories<input id="qaK" type="number" inputmode="decimal"></label><label>Protein g<input id="qaP" type="number" inputmode="decimal"></label><label>Carbs g<input id="qaC" type="number" inputmode="decimal"></label><label>Fat g<input id="qaF" type="number" inputmode="decimal"></label></div><div class="row"><button class="btn" data-act="qaAdd">Add</button></div></div>`;
   return h+`<input class="search" data-q="af" value="${esc(m.q||'')}" data-autofocus placeholder="Search ${m.tab}" aria-label="Search"><div class="mlist" id="afList">${afList(m)}</div>`}
+
+/* ===== Nutrition label scan: Claude reads the photo inside Claude; elsewhere on-device OCR (Tesseract) + a nutrition-panel parser ===== */
+const SD_ROWS=[['kcal','Energy','kcal'],['p','Protein','g'],['c','Carbs','g'],['f','Fat','g']];
+function scanTab(m){const sc=m.scan||(m.scan={});const d=sc.draft;
+  if(!d)return`<div class="scanbox">${sc.img?`<img class="scanimg" src="${sc.img}" alt="Your label photo">`:`<div class="scanph">${ico('camera')}<b>Photograph the nutrition panel</b><small>Whole table in frame, flat, in good light.</small></div>`}
+    ${sc.busy?`<div class="scanbusy"><span class="spinner"></span><span id="scanMsg">${esc(sc.busy)}</span></div>`:''}${sc.err?`<p class="scanerr">${esc(sc.err)}</p>`:''}
+    <div class="row scanbtns"><label class="btn">📷 Take photo<input type="file" accept="image/*" capture="environment" data-c="scanFile" hidden></label><label class="btn ghost">Choose a photo<input type="file" accept="image/*" data-c="scanFile" hidden></label></div>
+    <button class="btn ghost sm" data-act="scanManual">Type the label in instead</button></div>`;
+  const cell=(col,k)=>`<input type="number" inputmode="decimal" step="0.1" id="sd-${col}-${k}" data-sd="${col}.${k}" value="${d[col][k]??''}" aria-label="${k} ${col==='serve'?'per serve':'per 100 g'}">`;
+  const eat=d.serveG?r1(d.eat*d.serveG):null;const per=d.serveG?scaleM(d.per100,(d.eat*d.serveG)/100):scaleM(d.per100,(+d.eatG||100)/100);
+  return`<div class="form scanform">${sc.img?`<img class="scanthumb" src="${sc.img}" alt="">`:''}
+    ${d.src?`<div class="scansrc ${d.src}">${d.src==='claude'?'Read by Claude':d.src==='ocr'?'Read on this phone':'Entered by hand'}. Check the numbers against the label.</div>`:''}
+    <label>Name<input id="sdName" data-sd="name" value="${esc(d.name||'')}" placeholder="e.g. Chobani Fit yoghurt"></label>
+    <div class="fgrid"><label>Serving size (g or ml)<input type="number" inputmode="decimal" data-sd="serveG" id="sd-serveG" value="${d.serveG??''}"></label><label>Serving name<input data-sd="serveN" value="${esc(d.serveN||'serve')}"></label></div>
+    <table class="sdtbl"><tr><th></th><th>Per serve</th><th>Per 100 g</th></tr>${SD_ROWS.map(([k,l,u])=>`<tr><td>${l} <small>${u}</small></td><td>${cell('serve',k)}</td><td>${cell('per100',k)}</td></tr>`).join('')}</table>
+    <small class="muted">Only kJ on the label? Type kJ ÷ 4.184 for kcal, or enter it in the kJ box: <input type="number" inputmode="decimal" id="sdKJ" data-sdkj="1" placeholder="kJ per serve" style="width:120px"></small>
+    <div class="sdeat">${d.serveG?`<label>How many ${esc(d.serveN||'serves')} did you have?<input type="number" inputmode="decimal" step="0.25" min="0.25" data-sd="eat" value="${d.eat}"></label>`:`<label>How many grams did you have?<input type="number" inputmode="decimal" data-sd="eatG" value="${d.eatG||100}"></label>`}
+      <div class="sdtot" id="sdTot">${fmt(per.kcal)} kcal · P ${r1(per.p)} · C ${r1(per.c)} · F ${r1(per.f)}${eat?` <small>(${eat} g)</small>`:''}</div></div>
+    <div class="row"><button class="btn" data-act="scanSave" data-log="1">Save &amp; log to ${MEAL_LABEL[m.cat]}</button><button class="btn ghost" data-act="scanSave">Save to my foods</button><button class="btn ghost sm" data-act="scanReset">Rescan</button></div></div>`}
+function sdBlank(){return{name:'',serveG:null,serveN:'serve',serve:{},per100:{},eat:1,eatG:100}}
+// fill whichever column is missing from the other using the serving size
+function sdSync(d,from){const k=d.serveG;if(!k)return;const to=from==='serve'?'per100':'serve';const f=from==='serve'?100/k:k/100;for(const [x] of SD_ROWS){const v=d[from][x];if(v!=null&&v!=='')d[to][x]=r1(+v*f)}}
+function sdFinish(d){if(d.serveG){const hasS=SD_ROWS.some(([x])=>d.serve[x]!=null),has1=SD_ROWS.some(([x])=>d.per100[x]!=null);if(hasS&&!has1)sdSync(d,'serve');else if(has1&&!hasS)sdSync(d,'per100')}return d}
+async function prepImg(file,max=1600,gray){const bmp=await createImageBitmap(file);const k=Math.min(1,max/Math.max(bmp.width,bmp.height));const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);const x=c.getContext('2d');
+  if(gray)x.filter='grayscale(1) contrast(1.6) brightness(1.05)';x.drawImage(bmp,0,0,c.width,c.height);return await new Promise(r=>c.toBlob(b=>r(b),'image/jpeg',.9))}
+async function scanClaude(blob){const lim=await SAMPLE.limits().catch(()=>null);if(!lim||!lim.images)throw{code:'images_unavailable'};
+  const j=await SAMPLE.json('This photo shows a food or drink nutrition information panel (it may be Australian/NZ style with "per serve" and "per 100 g" columns). Read it carefully. Reply with only JSON in this shape:\n{"name": string|null, "serving_g": number|null, "per_serve": {"kcal": number|null, "protein_g": number|null, "carbs_g": number|null, "fat_g": number|null}, "per_100g": {"kcal": number|null, "protein_g": number|null, "carbs_g": number|null, "fat_g": number|null}}\nRules: name = product name if visible, else null. Energy in kcal: if only kJ is printed, convert kJ ÷ 4.184 and round. carbs = total carbohydrate (not sugars). fat = total fat. Use null for anything you cannot read. Numbers only, no units.',{images:[blob],modelTier:'default',cache:false});
+  const d=sdBlank();const g=o=>o&&typeof o==='object'?o:{};const n=v=>v==null||v===''||isNaN(+v)?null:r1(+v);
+  d.name=j&&j.name?String(j.name).slice(0,60):'';d.serveG=n(j&&j.serving_g);const s=g(j&&j.per_serve),h=g(j&&j.per_100g);
+  d.serve={kcal:n(s.kcal),p:n(s.protein_g),c:n(s.carbs_g),f:n(s.fat_g)};d.per100={kcal:n(h.kcal),p:n(h.protein_g),c:n(h.carbs_g),f:n(h.fat_g)};
+  for(const o of [d.serve,d.per100])for(const k of Object.keys(o))if(o[k]==null)delete o[k];d.src='claude';return sdFinish(d)}
+let TESS=null;function loadTess(){return TESS||(TESS=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=()=>res(window.Tesseract);s.onerror=()=>{TESS=null;rej(new Error('ocr library did not load'))};document.head.appendChild(s)}))}
+async function scanOCR(file,say){const T=await loadTess();say('Reading the label… (first time downloads the reader)');const img=await prepImg(file,1800,true);
+  const w=await T.createWorker('eng',1,{logger:m=>{if(m.status==='recognizing text')say('Reading the label… '+Math.round(m.progress*100)+'%')}});try{const {data}=await w.recognize(img);return parseNIP(data.text)}finally{w.terminate()}}
+// parse an OCR'd nutrition information panel. First number on a row = per serve, second = per 100 g (AU/NZ layout); one number = per 100 g.
+function parseNIP(txt){const d=sdBlank();d.src='ocr';const t=String(txt).replace(/[|]/g,' ').replace(/(\d),(\d{3})(?!\d)/g,'$1$2').replace(/(\d)\s*,(\d)/g,'$1.$2').replace(/(\d)[Oo]|[Oo](\d)/g,(m,a,b)=>a!=null?a+'0':'0'+b);
+  const lines=t.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const nums=s=>(s.match(/\d+(?:\.\d+)?\s*(?:kj|kcal|cal|mg|g)?/gi)||[]).map(x=>({v:parseFloat(x),u:(x.match(/[a-z]+$/i)||[''])[0].toLowerCase()})).filter(x=>x.u!=='mg');
+  const ss=t.match(/serv(?:ing|e)\s*size[^\d]{0,12}(\d+(?:\.\d+)?)\s*(g|ml)/i);if(ss)d.serveG=+ss[1];
+  const row=(re,not)=>{const l=lines.find(s=>re.test(s)&&!(not&&not.test(s)));return l?nums(l.replace(re,'')):null};
+  const put=(k,arr,conv)=>{if(!arr||!arr.length)return;const a=arr.map(x=>conv?conv(x):x.v).filter(v=>v!=null&&isFinite(v));if(a.length>=2){d.serve[k]=r1(a[0]);d.per100[k]=r1(a[1])}else if(a.length===1)d.per100[k]=r1(a[0])};
+  const en=row(/energy/i);if(en){const kj=en.filter(x=>x.u==='kj'),kc=en.filter(x=>/cal/.test(x.u));put('kcal',kc.length?kc:kj.length?kj.map(x=>({v:x.v/4.184})):en.map(x=>({v:x.v>900?x.v/4.184:x.v})))}
+  put('p',row(/protein/i));put('f',row(/fat\W*(?:,|-)?\s*total|^\s*total\s*fat|^\s*fat\b/i,/saturat|trans/i));put('c',row(/carbohydrate|carbs/i,/sugar/i));
+  const nm=lines.find(s=>/^[a-z][a-z '&.-]{2,}$/i.test(s)&&!/\d/.test(s)&&!/nutrition|information|serv|energy|protein|fat|carb|sugar|sodium|saturat|trans|fibre|fiber|gluten|per 100|quantity|average|ingredients|package/i.test(s));if(nm)d.name=nm.slice(0,50);
+  return sdFinish(d)}
+
 function afList(m){const q=(m.q||'').toLowerCase();
   if(m.tab==='recipes')return allRecipes().filter(r=>!q||r.name.toLowerCase().includes(q)).sort((a,b)=>(b.meal.includes(m.cat))-(a.meal.includes(m.cat))).map(r=>`<div class="lrow">${thumbHTML(r,'thumb sm')}<div class="grow"><b>${esc(r.name)}</b>${macroTxt(recipeMacros(r))}</div><input type="number" id="sv-${r.id}" value="1" step="0.5" min="0.25" aria-label="Servings"><span class="unit">serv</span><button class="btn sm" data-act="afRecipe" data-id="${r.id}">Add</button></div>`).join('');
   return allFoods().filter(f=>!q||f.name.toLowerCase().includes(q)).map(f=>`<div class="lrow"><div class="grow"><b>${esc(f.name)}</b><small>per 100 g: ${fmt(f.kcal)} kcal · P ${r1(f.p)} · C ${r1(f.c)} · F ${r1(f.f)}${f.unit?` · 1 ${f.unit.n} = ${f.unit.g} g`:''}</small></div><input type="number" id="g-${f.id}" value="${f.unit?f.unit.g:100}" min="1" aria-label="Grams"><span class="unit">g</span><button class="btn sm" data-act="afFood" data-id="${f.id}">Add</button></div>`).join('')}
@@ -2543,7 +2604,7 @@ A.goBuild=()=>{S.ui.tab='train';S.ui.sub.train='build';S.ui.editing=null;S.ui.pr
 A.hypStartProg=()=>{const st=$('#hypStart').value;if(!st){toast('Pick a start date');return}S.library.hyp={start:weekStart(st),days:+$('#hypDays').value,ts:Date.now()};save('library');hypSchedule();render();window.scrollTo(0,0);toast('12 weeks of sessions added to your calendar')};
 A.hypStop=()=>{hypClearCal();save('calendar');S.library.hyp=null;save('library');render();toast('Program ended. Your logged sessions are kept.')};
 A.hypPreview=el=>openModal({kind:'hypDay',id:el.dataset.id});
-A.hypMacros=()=>{S.profile.goal='gain';save('profile');const c=calcTargets(S.profile);if(!c){toast('Add your age, height and weight first');A.goTargets();return}
+A.hypMacros=()=>{S.profile.goal='gain';save('profile');const c=calcTargets(S.profile);if(!c){toast('Add your age, height and weight first');const el=['age','height','weight'].map(k=>document.querySelector(`[data-p="${k}"]`)).find(e=>e&&!e.value);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus({preventScroll:true}),400)}return}
   S.profile.targets={...c.train};S.profile.restTargets={...c.rest};save('profile');S.ui.td=null;render();toast(`Lean-bulk targets set: ${fmt(c.train.kcal)} kcal, ${c.train.p} g protein`)};
 A.bulkAdj=el=>{const k=+el.dataset.k;for(const key of ['targets','restTargets']){const T=S.profile[key];if(T){T.kcal=Math.round(T.kcal+k);T.c=Math.max(0,Math.round(T.c+k/4))}}save('profile');S.ui.td=null;render();toast(`${k>0?'Added':'Removed'} ${Math.abs(k)} kcal (carbs ${k>0?'+':'−'}${Math.abs(Math.round(k/4))} g)`)};
 A.liveOpen=()=>{S.ui.liveOpen=true;render();window.scrollTo(0,0)};
@@ -2640,6 +2701,30 @@ A.riDel=el=>{S.modal.draft.ing.splice(+el.dataset.k,1);renderModal()};
 A.rSave=()=>{const d=S.modal.draft;if(!d.name.trim()){toast('Name the recipe');return}if(!d.meal.length){toast('Pick at least one meal');return}if(!d.ing.length){toast('Add an ingredient');return}
   const rec={id:d.id,name:d.name.trim(),meal:d.meal,servings:+d.servings||1,ing:d.ing,steps:d.steps||''};if(d.imgId)rec.imgId=d.imgId;if(d.from)rec.from=d.from;const a=S.nutrition.recipes;const i=a.findIndex(r=>r.id===d.id);if(i>=0)a[i]=rec;else a.push(rec);save('nutrition');closeAll();render();toast('Recipe saved')};
 A.newFood=()=>openModal({kind:'foodEdit'});
+C.scanFile=async el=>{const f=el.files&&el.files[0];el.value='';if(!f||!S.modal)return;const m=S.modal;const sc=m.scan={img:URL.createObjectURL(f),busy:'Reading the label…'};renderModal();
+  const say=t=>{sc.busy=t;const e=document.getElementById('scanMsg');if(e)e.textContent=t};let d=null,why='';
+  if(SAMPLE){try{say('Claude is reading the label…');d=await scanClaude(await prepImg(f,1600))}catch(e){why=e&&e.code||''}}
+  if(!d){try{d=await scanOCR(f,say)}catch(e){console.warn('label OCR',e)}}
+  if(S.modal!==m)return;sc.busy='';
+  if(!d||!SD_ROWS.some(([k])=>d.per100[k]!=null||d.serve[k]!=null)){sc.err=why==='not_granted'?'Claude wasn\u2019t allowed to read photos. Type the label in instead.':'Couldn\u2019t read that photo. Try again closer and flatter, or type it in.';renderModal();return}
+  sc.draft=d;renderModal()};
+A.scanManual=()=>{S.modal.scan={draft:{...sdBlank(),src:'manual'}};renderModal()};
+A.scanReset=()=>{S.modal.scan={};renderModal()};
+function sdRefreshTot(){const d=S.modal&&S.modal.scan&&S.modal.scan.draft;const el=document.getElementById('sdTot');if(!d||!el)return;const g=d.serveG?d.eat*d.serveG:(+d.eatG||100);const x=scaleM(d.per100,g/100);el.innerHTML=`${fmt(x.kcal)} kcal · P ${r1(x.p)} · C ${r1(x.c)} · F ${r1(x.f)}${d.serveG?` <small>(${r1(g)} g)</small>`:''}`}
+document.addEventListener('input',e=>{const el=e.target;const d=S.modal&&S.modal.scan&&S.modal.scan.draft;if(!d)return;
+  if(el.dataset.sdkj){const v=parseFloat(el.value);if(v>0){d.serve.kcal=r1(v/4.184);const i=document.getElementById('sd-serve-kcal');if(i)i.value=d.serve.kcal;sdSync(d,'serve');SD_ROWS.forEach(([k])=>{const j=document.getElementById('sd-per100-'+k);if(j&&d.per100[k]!=null)j.value=d.per100[k]})}sdRefreshTot();return}
+  const p=el.dataset.sd;if(!p)return;const v=el.value;
+  if(p.includes('.')){const [col,k]=p.split('.');d[col][k]=v===''?null:+v;if(d.serveG){const to=col==='serve'?'per100':'serve';d[to][k]=v===''?null:r1(+v*(col==='serve'?100/d.serveG:d.serveG/100));const j=document.getElementById(`sd-${to}-${k}`);if(j)j.value=d[to][k]??''}}
+  else if(p==='serveG'){const had=!!d.serveG;d.serveG=v===''?null:+v;if(d.serveG){sdSync(d,SD_ROWS.some(([k])=>d.per100[k]!=null)?'per100':'serve');SD_ROWS.forEach(([k])=>{const j=document.getElementById('sd-serve-'+k);if(j)j.value=d.serve[k]??''})}if(had!==!!d.serveG){renderModal();return}}
+  else if(p==='eat'||p==='eatG')d[p]=+v||0;else d[p]=v;sdRefreshTot()});
+A.scanSave=el=>{const m=S.modal,d=m.scan.draft;if(d.serveG)sdSync(d,SD_ROWS.some(([k])=>d.serve[k]!=null)?'serve':'per100');
+  const name=(d.name||'').trim();if(!name){toast('Give it a name first');const i=$('#sdName');if(i)i.focus();return}
+  const P=d.per100;if(P.kcal==null&&P.p==null&&P.c==null&&P.f==null){toast('Add the numbers from the label');return}
+  const kcal=P.kcal!=null?+P.kcal:r1((+P.p||0)*4+(+P.c||0)*4+(+P.f||0)*9);
+  const food={id:'f-'+uid(),name,kcal,p:+P.p||0,c:+P.c||0,f:+P.f||0,tags:['scanned'],unit:d.serveG?{n:(d.serveN||'serve').trim()||'serve',g:+d.serveG}:null};S.nutrition.foods.push(food);save('nutrition');
+  if(el.dataset.log){const g=d.serveG?d.eat*d.serveG:(+d.eatG||100);logFood(S.ui.date,m.cat,{name,qty:d.serveG?`${r1(d.eat)} ${food.unit.n} (${r1(g)} g)`:`${r1(g)} g`,...scaleM(food,g/100)});closeModal();render();toast('Saved and logged '+name)}
+  else{m.tab='foods';m.q=name;m.scan={};renderModal();toast('Saved to your foods')}};
+A.toDaily=()=>{const el=document.getElementById('dailyTargets');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})};
 A.cfSave=()=>{const name=$('#cfName').value.trim();const k=num($('#cfK').value),p=num($('#cfP').value)||0,c=num($('#cfC').value)||0,f=num($('#cfF').value)||0;if(!name||k==null){toast('Add a name and calories');return}
   const un=$('#cfUn').value.trim(),ug=num($('#cfUg').value);const food={id:'f-'+uid(),name,kcal:k,p,c,f,tags:[],unit:un&&ug?{n:un,g:ug}:null};S.nutrition.foods.push(food);save('nutrition');closeModal();
   if(S.modal&&S.modal.kind==='recipeEdit'){S.modal.draft.ing.push([food.id,food.unit?food.unit.g:100]);renderModal()}render();toast('Food saved')};
