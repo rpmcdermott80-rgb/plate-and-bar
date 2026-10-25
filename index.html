@@ -9,7 +9,11 @@
 function pbIDB(){return new Promise((res,rej)=>{const r=indexedDB.open('plateandbar',1);r.onupgradeneeded=()=>r.result.createObjectStore('blobs');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 window.LOCAL_ASSETS={async upload(blob){const id='local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);const db=await pbIDB();
   await new Promise((res,rej)=>{const tx=db.transaction('blobs','readwrite');tx.objectStore('blobs').put(blob,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});return{id,url:'blob/'+id+'.jpg'}}};
-if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+window.PB_VER='ae9348ef';
+// check for a new version on every open; when the new service worker takes over, reload once onto it
+if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let done=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!done){done=true;location.reload()}});
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{}))}
 try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
 </script></head><body>
 <title>Plate &amp; Bar</title>
@@ -2452,7 +2456,7 @@ function mSummary(m){const s=allSessions().find(x=>x.id===m.id);if(!s)return mhe
   <div class="row"><button class="btn ghost sm" data-act="coachFin" data-id="${s.id}">▶ Coach recap</button></div><div><div class="eyebrow">How did it feel?</div><div class="stars">${[1,2,3,4,5].map(v=>`<button class="${s.rating>=v?'on':''}" data-act="rate" data-v="${v}" aria-label="${v} star${v>1?'s':''}">★</button>`).join('')}</div></div>
   <label>Notes<textarea id="sumNotes" rows="2">${esc(s.notes||'')}</textarea></label>
   <div class="row"><button class="btn" data-act="sumSave">Save</button><button class="btn ghost danger sm" data-act="sessDel" data-confirm="1">Delete this log</button></div>`}
-function mSettings(){const p=S.profile;return mhead('Settings')+`<div class="form"><div class="fgrid"><label>Weight unit<select data-p="units"><option ${p.units==='kg'?'selected':''}>kg</option><option ${p.units==='lb'?'selected':''}>lb</option></select></label>
+function mSettings(){const p=S.profile;return mhead('Settings')+`<div class="pbver"><span class="muted sm">App version ${window.PB_VER||''}</span><button class="btn ghost sm" data-act="pbUpdate">Check for updates</button></div><div class="form"><div class="fgrid"><label>Weight unit<select data-p="units"><option ${p.units==='kg'?'selected':''}>kg</option><option ${p.units==='lb'?'selected':''}>lb</option></select></label>
   <label>Round suggested weights to<select data-p="inc">${[1,1.25,2.5,5].map(v=>`<option value="${v}" ${+p.inc===v?'selected':''}>${v} ${p.units}</option>`).join('')}</select></label></div>
   <div><div class="eyebrow">Coach</div><div class="fgrid" style="margin-top:6px"><label>Check-in &amp; pep talk when I open the app<select data-p="coachOpen">${[['daily','First open each day'],['always','Every time'],['off','Off']].map(([v,l])=>`<option value="${v}" ${(p.coachOpen||'daily')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <label>Coach recap after workouts<select data-p="coachFinish">${[['on','On'],['off','Off']].map(([v,l])=>`<option value="${v}" ${(p.coachFinish||'on')===v?'selected':''}>${l}</option>`).join('')}</select></label>
@@ -2804,5 +2808,6 @@ requestAnimationFrame(animFigs);
       else if(remote&&local)docNames().forEach(n=>Store.flush(n))}
     setSync()})()})();
 </script>
-
+<script>A.pbUpdate=async()=>{toast('Checking for updates…');try{const r=await navigator.serviceWorker.getRegistration();if(r)await r.update()}catch(e){}setTimeout(()=>location.reload(),1800)};</script>
+<style>.pbver{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}</style>
 </body></html>
