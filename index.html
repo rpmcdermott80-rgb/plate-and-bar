@@ -9,7 +9,7 @@
 function pbIDB(){return new Promise((res,rej)=>{const r=indexedDB.open('plateandbar',1);r.onupgradeneeded=()=>r.result.createObjectStore('blobs');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 window.LOCAL_ASSETS={async upload(blob){const id='local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);const db=await pbIDB();
   await new Promise((res,rej)=>{const tx=db.transaction('blobs','readwrite');tx.objectStore('blobs').put(blob,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});return{id,url:'blob/'+id+'.jpg'}}};
-window.PB_VER='bd5a8874';
+window.PB_VER='cc4ab688';
 // check for a new version on every open; when the new service worker takes over, reload once onto it
 if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let done=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!done){done=true;location.reload()}});
@@ -187,6 +187,11 @@ label.inline{flex-direction:row;align-items:center;gap:8px;font-weight:500;color
 .stype{font:500 .8rem var(--mono);text-align:center;border-radius:5px;padding:4px 0;background:var(--sunk)}
 .stype.t-W{color:var(--warn)}.stype.t-D{color:var(--carb)}.stype.t-F{color:var(--bad)}
 .tick{height:38px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:1.05rem;color:var(--muted)}
+.seg{flex-shrink:0;max-width:100%;overflow-x:auto;scrollbar-width:none}.seg::-webkit-scrollbar{display:none}.seg button{white-space:nowrap;flex-shrink:0}
+.wqsrc{display:inline-block!important;width:auto!important;font-family:var(--body)!important;margin-left:4px;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.07);font-size:.7rem;color:var(--muted)}.wqsrc.wq-claude{background:var(--accent-soft);color:var(--ink)}
+.lookbtn{display:block;width:100%;text-align:left;margin:4px 0 8px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;background:transparent;color:var(--accent);font:inherit;cursor:pointer}
+.wqrow small{display:block}.wqrow .wqtot{color:var(--ink);font-weight:600}.wqbtns{display:flex;flex-direction:column;gap:4px}
+.movebox{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--sunk);display:flex;flex-direction:column;gap:8px}.movebox small{display:block;color:var(--muted)}.movebox.flash{animation:mvflash 1.2s ease 2}@keyframes mvflash{50%{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}}
 .lset.done .tick{background:var(--good);border-color:var(--good);color:#fff}
 .hist{font:500 .78rem var(--mono);color:var(--muted);background:var(--sunk);border-radius:6px;padding:6px 8px}
 .liveFoot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
@@ -1215,7 +1220,9 @@ function hypWorkout(id){const [,ws,ds]=String(id).split(':');const w=+ws,di=+ds,
 const isHypId=id=>String(id||'').startsWith('hyp:');
 function hypDeloadId(id){if(!isHypId(id))return false;const w=+String(id).split(':')[1];return w===4||w===8}
 function hypDayList(){const H=S.library.hyp;return H?HYP_DAYS.map((D,i)=>i).filter(i=>H.days===5||!HYP_DAYS[i].opt):[]}
-function hypDate(w,di){return addDays(S.library.hyp.start,(w-1)*7+HYP_DAYS[di].wd)}
+function hypBaseDate(w,di){return addDays(S.library.hyp.start,(w-1)*7+HYP_DAYS[di].wd)}
+// a session moved to another day (missed it, or swapped days) keeps its place in the program order
+function hypDate(w,di){const mv=S.library.hyp.moved||{};return mv[`hyp:${w}:${di}`]||hypBaseDate(w,di)}
 function hypDone(id){return allSessions().find(s=>s.workoutId===id)}
 function hypCurWeek(){const H=S.library.hyp;if(!H)return 0;const d=Math.floor((parseISO(todayISO())-parseISO(H.start))/864e5);return Math.min(12,Math.max(1,Math.floor(d/7)+1))}
 function hypAll(){const out=[];for(let w=1;w<=12;w++)for(const di of hypDayList())out.push({id:`hyp:${w}:${di}`,w,di,date:hypDate(w,di)});return out}
@@ -1262,14 +1269,14 @@ function vBuild(){const H=S.library.hyp;
   const cw=hypCurWeek(),info=hypWeekInfo(cw),all=hypAll(),done=all.filter(x=>hypDone(x.id)).length,nx=hypNext(),t=todayISO();
   h+=`<div class="card"><div class="cardhead"><div><div class="eyebrow">Week ${cw} of 12 · Block ${info.block}: ${HYP_BLOCKS[info.block-1].n}</div><h2>${esc(info.label)}</h2></div><span class="mono">${done}/${all.length} sessions</span></div>
     <div class="pbar"><i style="width:${done/all.length*100}%"></i></div>
-    ${nx?`<div class="wcard hypnext"><div class="figstrip">${HYP_DAYS[nx.di].items.slice(0,3).map(([id])=>`<div class="figbox">${exPic(getEx(id))}</div>`).join('')}</div><div class="grow"><small>${nx.date===t?'Today':nx.date<t?'Missed · '+shortDate(nx.date):longDay(nx.date)+' '+shortDate(nx.date)}</small><br><b>Week ${nx.w} · ${HYP_DAYS[nx.di].name}</b><br><small>${HYP_DAYS[nx.di].focus}</small></div><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}">Preview</button><button class="btn sm" data-act="start" data-id="${nx.id}" data-d="${nx.date<=t?t:nx.date}">Start</button></div>`:`<div class="pr">🏆 <span><b>Program complete!</b> Compare your key lifts below, then start again with heavier weights.</span></div>`}</div>`;
+    ${nx?`<div class="wcard hypnext"><div class="figstrip">${HYP_DAYS[nx.di].items.slice(0,3).map(([id])=>`<div class="figbox">${exPic(getEx(id))}</div>`).join('')}</div><div class="grow"><small>${nx.date===t?'Today':nx.date<t?'Missed · '+shortDate(nx.date):longDay(nx.date)+' '+shortDate(nx.date)}</small><br><b>Week ${nx.w} · ${HYP_DAYS[nx.di].name}</b><br><small>${HYP_DAYS[nx.di].focus}</small></div><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}" data-move="1">Change day</button><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}">Preview</button><button class="btn sm" data-act="start" data-id="${nx.id}" data-d="${nx.date<=t?t:nx.date}">Start</button></div>`:`<div class="pr">🏆 <span><b>Program complete!</b> Compare your key lifts below, then start again with heavier weights.</span></div>`}</div>`;
   // grid
   const days=hypDayList();
   h+=`<div class="card"><div class="cardhead"><h2>${ico('cal')}12-week log</h2><span class="legend"><span><i class="lg done"></i>Done</span><span><i class="lg miss"></i>Missed</span><span><i class="lg dl"></i>Deload</span></span></div><div class="hgrid" style="--nd:${days.length}"><span></span>${days.map(di=>`<span class="hh">${HYP_DAYS[di].name.replace('Arms & Delts','Arms')}</span>`).join('')}`;
   for(let w=1;w<=12;w++){const wi=hypWeekInfo(w);h+=`<span class="hw ${w===cw?'cur':''}">W${w}</span>`;
     for(const di of days){const id=`hyp:${w}:${di}`,d=hypDate(w,di),s=hypDone(id);const st=s?'done':d<t?'miss':d===t?'today':'';
       h+=`<button class="hc ${st} ${wi.deload?'dl':''} ${wi.test?'ts':''}" data-act="${s?'viewSess':'hypPreview'}" data-id="${s?s.id:id}" title="${esc(`Week ${w} ${HYP_DAYS[di].name}, ${shortDate(d)}`)}">${s?'✓':parseISO(d).getDate()}</button>`}}
-  h+=`</div><small>Tap a session to preview or start it. Missed sessions can be done any time; just keep the order.</small></div>`;
+  h+=`</div><small>Tap a session to preview, start or move it to another day. Missed a day? Open the session, pick the day you'll do it, and push the rest back if you like.</small></div>`;
   // volume
   const ws=addDays(H.start,(cw-1)*7);h+=`<div class="card"><div class="cardhead"><h2>${ico('progress')}Weekly volume</h2><span class="muted sm">Week ${cw} · hard sets per muscle</span></div>${volBars(hypPlannedVol(cw),doneVol(ws,addDays(ws,6)))}</div>`;
   // key lifts
@@ -1290,6 +1297,10 @@ function mHypDay(m){const W=hypWorkout(m.id);if(!W)return mhead('Session');const
         <div class="mono sm">${wu?wu+' warm-up + ':''}${ws.length} × ${esc(reps)}${dr?' + drop set':''} · RIR ${esc(ws[ws.length-1]?.rir??info.rir)} · rest ${it.link&&i<sec.items.length-1?'none, superset':it.rest+'s'}</div>
         <small>${esc(it.note)}</small><br><button class="linkbtn" data-act="exInfo" data-id="${ex.id}">Technique, muscles & mistakes →</button></div></div>`})});
   h+=`<div class="row">${s?`<button class="btn ghost" data-act="viewSess" data-id="${s.id}">✓ View logged session</button>`:`<button class="btn" data-act="start" data-id="${m.id}" data-d="${date<=t?t:date}">Start this session</button>`}</div>`;
+  if(H&&!s){const moved=(H.moved||{})[m.id];h+=`<div class="movebox" id="moveBox"><div><b>${date<t?'Missed this one?':'Need a different day?'}</b><small>Pick the day you'll do it. ${moved?`Moved from ${longDay(hypBaseDate(w,d))} ${shortDate(hypBaseDate(w,d))}.`:''}</small></div>
+    <div class="row"><label>Do it on<input type="date" id="hypMoveD" value="${date<t?t:date}"></label><button class="btn sm" data-act="hypMove" data-id="${m.id}">Move session</button></div>
+    <label class="inline"><input type="checkbox" id="hypMoveShift" ${date<t?'checked':''}> Push the sessions after it back by the same number of days</label>
+    ${moved?`<button class="linkbtn" data-act="hypUnmove" data-id="${m.id}">Back to its planned day</button>`:''}</div>`}
   return h}
 
 /* ===== more exercises (machines, cables, extras): rows, muscles, animation, alternates, guides ===== */
@@ -1842,6 +1853,8 @@ function mRestTimer(){const p=S.profile;const fm=s=>s<60?s+'s':Math.floor(s/60)+
   return mhead('⏱ Rest timer')+`<div class="rpre">${[[30,'Core & pump'],[60,'Isolation'],[90,'Accessories'],[120,'Compounds'],[150,'Heavy compounds'],[180,'Squat / deadlift'],[240,'Max effort']].map(([s,l])=>`<button class="rp" data-act="restGo" data-s="${s}"><b>${fm(s)}</b><small>${l}</small></button>`).join('')}</div>
   <div class="row"><label style="flex:1">Custom (seconds)<input type="number" id="restCustom" min="5" step="5" value="${p.lastRest||75}" inputmode="numeric"></label><button class="btn" data-act="restGoCustom" style="align-self:flex-end">Start</button></div>
   <label class="inline"><input type="checkbox" data-c="autoRest" ${p.autoRest!==false?'checked':''}> Start automatically when I tick a set in a workout</label>
+  <div class="row"><label class="inline"><input type="radio" name="restAfter" data-c="restPlan" value="0" ${!p.restPlan?'checked':''}> After every set, rest</label><input type="number" id="setRest" data-c="setRest" min="10" step="5" value="${+p.setRest||90}" inputmode="numeric" style="width:80px" aria-label="Seconds after each set"><span class="muted sm">seconds</span></div>
+  <label class="inline"><input type="radio" name="restAfter" data-c="restPlan" value="1" ${p.restPlan?'checked':''}> Use each exercise's planned rest (after the last exercise in a superset)</label>
   <div class="tipbox"><b>How long to rest?</b> For muscle growth, 2–3 minutes between hard compound sets beats short rests because you keep more reps per set. 60–90 seconds is fine for isolation work. The timer beeps for the last 3 seconds and vibrates when time's up.</div>`}
 
 MUSCLE_LABEL.adductors='Adductors';
@@ -2355,11 +2368,56 @@ function mExEdit(m){const d=m.draft;const ex=getEx(d.id);const orm=d.id&&!m.isNe
   ${(d.cat||ex.cat)==='strength'?`<label>Manual 1RM override (${U()})<input type="number" id="exORM" value="${esc(d.oneRM||'')}" placeholder="${orm?'Estimated from logs: '+r1(orm):'Leave blank to estimate from your logs'}"></label>`:''}
   <div class="row"><button class="btn" data-act="exSave">Save</button>${d.custom&&!m.isNew?`<button class="btn ghost danger" data-act="exDel" data-confirm="1">Delete exercise</button>`:''}</div></div>`}
 
-function mAddFood(m){const tabs=[['recipes','Recipes'],['foods','Foods'],['scan','📷 Scan label'],['quick','Quick add']];
+function mAddFood(m){const tabs=[['recipes','Recipes'],['foods','Foods'],['web','🔎 Look up'],['scan','📷 Scan label'],['quick','Quick add']];
   let h=mhead('Add to '+MEAL_LABEL[m.cat])+`<div class="seg">${tabs.map(([k,v])=>`<button class="${m.tab===k?'on':''}" data-act="afTab" data-v="${k}">${v}</button>`).join('')}</div>`;
   if(m.tab==='scan')return h+scanTab(m);
+  if(m.tab==='web')return h+webTab(m);
   if(m.tab==='quick')return h+`<div class="form"><label>Name<input id="qaName" placeholder="e.g. Flat white" data-autofocus></label><div class="fgrid"><label>Calories<input id="qaK" type="number" inputmode="decimal"></label><label>Protein g<input id="qaP" type="number" inputmode="decimal"></label><label>Carbs g<input id="qaC" type="number" inputmode="decimal"></label><label>Fat g<input id="qaF" type="number" inputmode="decimal"></label></div><div class="row"><button class="btn" data-act="qaAdd">Add</button></div></div>`;
   return h+`<input class="search" data-q="af" value="${esc(m.q||'')}" data-autofocus placeholder="Search ${m.tab}" aria-label="Search"><div class="mlist" id="afList">${afList(m)}</div>`}
+
+/* ===== Look up a food's macros from a description: Open Food Facts (packaged foods, AU first), USDA FoodData Central
+   (whole and prepared foods), Claude's estimate inside Claude, or a web search as the last resort ===== */
+function wqParse(q){const m=String(q).match(/(\d+(?:\.\d+)?)\s*(g|grams?|ml)\b/i);return{text:String(q).replace(m?m[0]:'','').replace(/\s+/g,' ').trim(),g:m?+m[1]:null}}
+const wqNum=v=>v==null||v===''||isNaN(+v)?null:+v;
+const WQ_LIMIT={hit:false};
+function wqFetch(url,ms=12000){const c=new AbortController(),t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).then(r=>{if(r.status===429&&url.includes('nal.usda.gov'))WQ_LIMIT.hit=true;if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).finally(()=>clearTimeout(t))}
+async function offSearch(q){const qs=`/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=12&fields=product_name,brands,nutriments,serving_quantity,countries_tags`;let last;
+  for(const host of ['https://world.openfoodfacts.org','https://world.openfoodfacts.net'])try{const j=await wqFetch(host+qs);
+    return(j.products||[]).map(x=>{const n=x.nutriments||{};const kc=wqNum(n['energy-kcal_100g'])??(wqNum(n.energy_100g)!=null?n.energy_100g/4.184:null);
+      return{src:'off',name:String(x.product_name||'').trim(),brand:[].concat(x.brands||[]).join(', ').split(',')[0].trim(),au:(x.countries_tags||[]).includes('en:australia'),kcal:kc,p:wqNum(n.proteins_100g),c:wqNum(n.carbohydrates_100g),f:wqNum(n.fat_100g),serveG:wqNum(x.serving_quantity)}})
+      .filter(x=>x.name&&x.kcal!=null&&x.p!=null).sort((a,b)=>b.au-a.au).slice(0,8)}catch(e){last=e}
+  throw last}
+async function fdcSearch(q){const key=(S.profile.fdcKey||'').trim()||'DEMO_KEY';WQ_LIMIT.hit=false;
+  const j=await wqFetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(key)}&query=${encodeURIComponent(q)}&dataType=${encodeURIComponent('Foundation,SR Legacy,Survey (FNDDS)')}&pageSize=8`);
+  return(j.foods||[]).map(x=>{const v=(nums,unit)=>{const n=(x.foodNutrients||[]).find(y=>nums.includes(String(y.nutrientNumber))&&(!unit||String(y.unitName).toUpperCase()===unit));return n?+n.value:null};
+    let kc=v(['208','957','958'],'KCAL');if(kc==null){const kj=v(['268'],'KJ');if(kj!=null)kc=kj/4.184}
+    const name=String(x.description||'').toLowerCase().replace(/(^|[\s,(])\w/g,c=>c.toUpperCase());
+    return{src:'usda',name,brand:'',kcal:kc,p:v(['203']),c:v(['205']),f:v(['204']),serveG:null}}).filter(x=>x.kcal!=null&&x.p!=null)}
+async function claudeEstimate(q){const j=await SAMPLE.json('Estimate the nutrition of this food as eaten in Australia: "'+q+'". Use typical values from food composition tables (e.g. AUSNUT/FSANZ or USDA) or the brand\'s published panel if it is a known product. Reply with only JSON: {"name": string, "typical_serve_g": number|null, "per_100g": {"kcal": number, "protein_g": number, "carbs_g": number, "fat_g": number}, "note": string}. name = a short clear food name. note = one short sentence on what you assumed (cooked/raw, brand, size).',{modelTier:'default',cache:false});
+  const h=(j&&j.per_100g)||{};return{src:'claude',name:String((j&&j.name)||q).slice(0,60),brand:'',kcal:wqNum(h.kcal),p:wqNum(h.protein_g),c:wqNum(h.carbs_g),f:wqNum(h.fat_g),serveG:wqNum(j&&j.typical_serve_g),note:j&&j.note?String(j.note).slice(0,160):''}}
+const WQ_SRC={off:['Open Food Facts','packaged foods'],usda:['USDA','food tables'],claude:['Claude estimate','check it']};
+function webTab(m){const w=m.web||(m.web={q:m.q||'',res:[],tried:false});const g=wqParse(w.q).g;
+  const gl=`https://www.google.com/search?q=${encodeURIComponent(wqParse(w.q).text+' calories protein carbs fat per 100g')}`;
+  return`<div class="form"><label>Describe the food<input id="wqText" data-wq="1" value="${esc(w.q)}" data-autofocus placeholder="e.g. Chobani Fit vanilla, 150g grilled salmon, Big Mac" enterkeyhint="search"></label>
+    <div class="row"><button class="btn" data-act="wqGo" ${w.busy?'disabled':''}>Search food databases</button>${SAMPLE?`<button class="btn ghost" data-act="wqClaude" ${w.busy?'disabled':''}>Ask Claude to estimate</button>`:''}<a class="btn ghost sm" href="${gl}" target="_blank" rel="noopener" id="wqWeb">Search the web ↗</a></div>
+    <small class="muted">Searches Open Food Facts (packaged foods, Australian first) and the USDA food tables. Put the amount in (e.g. “150g”) and it's filled in for you. Found the numbers on a website instead? Use Quick add, or Foods → Custom food.</small></div>
+    ${w.busy?`<div class="scanbusy"><span class="spinner"></span><span>${esc(w.busy)}</span></div>`:''}${WQ_LIMIT.hit&&!w.busy?`<small class="muted">USDA's shared search limit is used up for this hour, so only packaged foods are shown. Add a free personal key in Settings → Food lookup.</small>`:''}${w.err?`<p class="scanerr">${esc(w.err)}</p>`:''}
+    <div class="mlist">${w.res.map((x,k)=>{const [sn,sd]=WQ_SRC[x.src];const dg=g||x.serveG||100;const e=scaleM({kcal:x.kcal||0,p:x.p||0,c:x.c||0,f:x.f||0},dg/100);
+      return`<div class="lrow wqrow"><div class="grow"><b>${esc(x.name)}</b>${x.brand?` <span class="muted sm">${esc(x.brand)}</span>`:''} <small class="wqsrc wq-${x.src}" title="${sd}">${sn}</small><small>per 100 g: ${fmt(x.kcal)} kcal · P ${r1(x.p)} · C ${r1(x.c??0)} · F ${r1(x.f??0)}${x.serveG?` · serve ${r1(x.serveG)} g`:''}</small>${x.note?`<small class="muted">${esc(x.note)}</small>`:''}<small class="wqtot" id="wqTot-${k}">${r1(dg)} g = ${fmt(e.kcal)} kcal · P ${r1(e.p)} · C ${r1(e.c)} · F ${r1(e.f)}</small></div>
+        <input type="number" id="wqG-${k}" data-wqg="${k}" value="${r1(dg)}" min="1" inputmode="decimal" aria-label="Grams"><span class="unit">g</span><div class="wqbtns"><button class="btn sm" data-act="wqAdd" data-k="${k}">Add</button><button class="btn ghost sm" data-act="wqSave" data-k="${k}" title="Save to my foods without logging">Save</button></div></div>`}).join('')}</div>
+    ${w.tried&&!w.busy&&!w.res.length?`<div class="card muted">Nothing found. Try fewer words (e.g. “salmon fillet”), ${SAMPLE?'ask Claude to estimate, ':''}or search the web and use Quick add.</div>`:''}`}
+async function wqRun(kind){const m=S.modal,w=m.web;const inp=$('#wqText');if(inp)w.q=inp.value.trim();const q=wqParse(w.q).text;if(!q){toast('Describe the food first');return}
+  w.busy=kind==='claude'?'Claude is estimating…':'Searching food databases…';w.err='';renderModal();
+  try{if(kind==='claude'){const x=await claudeEstimate(w.q);if(x.kcal==null)throw new Error('no estimate');w.res=[x,...w.res.filter(r=>r.src!=='claude')]}
+    else{const r=await Promise.allSettled([offSearch(q),fdcSearch(q)]);const [o,u]=r.map(x=>x.status==='fulfilled'?x.value:[]);const ok=[...o.filter(x=>x.au),...u,...o.filter(x=>!x.au)]; // Australian packaged foods, then the food tables, then the rest
+      w.res=ok;if(!ok.length&&r.every(x=>x.status==='rejected'))w.err='Couldn\'t reach the food databases'+(SAMPLE?'. Try “Ask Claude to estimate”, or search the web.':'. Check your connection, or search the web.')}}
+  catch(e){w.err=kind==='claude'?'Claude couldn\'t estimate that one. Try describing it differently.':'Search failed.'}
+  w.busy='';w.tried=true;if(S.modal===m)renderModal()}
+function wqFood(k){const w=S.modal.web,x=w.res[k];const kcal=x.kcal!=null?r1(x.kcal):r1((x.p||0)*4+(x.c||0)*4+(x.f||0)*9);
+  const name=x.brand&&!x.name.toLowerCase().includes(x.brand.toLowerCase())?`${x.name} (${x.brand})`:x.name;
+  let f=S.nutrition.foods.find(y=>y.name===name&&y.kcal===kcal);
+  if(!f){f={id:'f-'+uid(),name,kcal,p:r1(x.p||0),c:r1(x.c||0),f:r1(x.f||0),tags:['web',x.src],desc:w.q,unit:x.serveG?{n:'serve',g:r1(x.serveG)}:null};S.nutrition.foods.push(f);save('nutrition')}
+  return f}
 
 /* ===== Nutrition label scan: Claude reads the photo inside Claude; elsewhere on-device OCR (Tesseract) + a nutrition-panel parser ===== */
 const SD_ROWS=[['kcal','Energy','kcal'],['p','Protein','g'],['c','Carbs','g'],['f','Fat','g']];
@@ -2408,7 +2466,8 @@ function parseNIP(txt){const d=sdBlank();d.src='ocr';const t=String(txt).replace
 
 function afList(m){const q=(m.q||'').toLowerCase();
   if(m.tab==='recipes')return allRecipes().filter(r=>!q||r.name.toLowerCase().includes(q)).sort((a,b)=>(b.meal.includes(m.cat))-(a.meal.includes(m.cat))).map(r=>`<div class="lrow">${thumbHTML(r,'thumb sm')}<div class="grow"><b>${esc(r.name)}</b>${macroTxt(recipeMacros(r))}</div><input type="number" id="sv-${r.id}" value="1" step="0.5" min="0.25" aria-label="Servings"><span class="unit">serv</span><button class="btn sm" data-act="afRecipe" data-id="${r.id}">Add</button></div>`).join('');
-  return allFoods().filter(f=>!q||f.name.toLowerCase().includes(q)).map(f=>`<div class="lrow"><div class="grow"><b>${esc(f.name)}</b><small>per 100 g: ${fmt(f.kcal)} kcal · P ${r1(f.p)} · C ${r1(f.c)} · F ${r1(f.f)}${f.unit?` · 1 ${f.unit.n} = ${f.unit.g} g`:''}</small></div><input type="number" id="g-${f.id}" value="${f.unit?f.unit.g:100}" min="1" aria-label="Grams"><span class="unit">g</span><button class="btn sm" data-act="afFood" data-id="${f.id}">Add</button></div>`).join('')}
+  const fl=allFoods().filter(f=>!q||f.name.toLowerCase().includes(q)||(f.desc||'').toLowerCase().includes(q));
+  return (q?`<button class="lookbtn" data-act="webFrom">🔎 Look up the macros for “${esc(m.q)}” online</button>`:'')+fl.map(f=>`<div class="lrow"><div class="grow"><b>${esc(f.name)}</b><small>per 100 g: ${fmt(f.kcal)} kcal · P ${r1(f.p)} · C ${r1(f.c)} · F ${r1(f.f)}${f.unit?` · 1 ${f.unit.n} = ${f.unit.g} g`:''}</small></div><input type="number" id="g-${f.id}" value="${f.unit?f.unit.g:100}" min="1" aria-label="Grams"><span class="unit">g</span><button class="btn sm" data-act="afFood" data-id="${f.id}">Add</button></div>`).join('')}
 
 function mRecipe(m){const r=getRecipe(m.id);if(!r)return mhead('Recipe not found');const x=recipeMacros(r);const fm=foodMap();const src=recipeImg(r);
   return(src?`<img class="hero" src="${src}" alt="${esc(r.name)}">`:'')+mhead(esc(r.name))+`${macroTxt(x)}
@@ -2463,6 +2522,7 @@ function mSettings(){const p=S.profile;return mhead('Settings')+`<div class="pbv
     <label>Music style<select data-p="musicStyle">${[['rock','Hard rock'],['edm','Electronic']].map(([v,l])=>`<option value="${v}" ${(p.musicStyle||'rock')===v?'selected':''}>${l}</option>`).join('')}</select></label>
     <label>Music volume<input type="range" min="0" max="1" step="0.05" data-p="musicVol" value="${p.musicVol==null?.55:p.musicVol}"></label></div>
     <div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="pepOpen">▶ Play a pep talk now</button></div><small class="muted">On iPhone, web audio is muted while the ring/silent switch is on silent.</small></div>
+  <div><div class="eyebrow">Food lookup</div><label style="margin-top:6px">USDA food database key (optional)<input data-p="fdcKey" value="${esc(p.fdcKey||'')}" placeholder="Leave blank to use the shared demo key" autocomplete="off" spellcheck="false"></label><small class="muted">The shared key allows about 10 USDA searches an hour. A free personal key (fdc.nal.usda.gov → API Key Signup, just an email) allows 1,000. Open Food Facts needs no key.</small></div>
   <div class="calc">${Store.mode==='cloud'?'Your data is saved privately to your Claude account, so it follows you to any device where you open this page.':'Your data is saved in this browser only. Open the page while signed in to Claude to sync it to your account.'}</div>
   <div><div class="eyebrow">Backup</div><div class="row" style="margin-top:6px"><button class="btn ghost sm" data-act="backupCopy">Copy backup to clipboard</button></div>
   <label style="margin-top:10px">Restore from backup<textarea id="restoreTxt" rows="3" placeholder="Paste a backup here"></textarea></label><div class="row" style="margin-top:6px"><button class="btn ghost sm danger" data-act="restore" data-confirm="1">Replace all data with this backup</button></div></div></div>`}
@@ -2606,8 +2666,15 @@ function startWorkout(wid,d){if(S.live){toast('Finish or discard the current wor
 A.start=el=>{closeAll();startWorkout(el.dataset.id,el.dataset.d)};
 A.goBuild=()=>{S.ui.tab='train';S.ui.sub.train='build';S.ui.editing=null;S.ui.progEdit=null;S.ui.liveOpen=false;closeAll();render();window.scrollTo(0,0)};
 A.hypStartProg=()=>{const st=$('#hypStart').value;if(!st){toast('Pick a start date');return}S.library.hyp={start:weekStart(st),days:+$('#hypDays').value,ts:Date.now()};save('library');hypSchedule();render();window.scrollTo(0,0);toast('12 weeks of sessions added to your calendar')};
+A.hypMove=el=>{const H=S.library.hyp,id=el.dataset.id,D=$('#hypMoveD').value;if(!H||!D){toast('Pick a day');return}
+  const all=hypAll(),k=all.findIndex(x=>x.id===id);if(k<0)return;const from=all[k].date,delta=Math.round((parseISO(D)-parseISO(from))/864e5);
+  H.moved=H.moved||{};H.moved[id]=D;let n=0;
+  if($('#hypMoveShift').checked&&delta)for(const x of all.slice(k+1))if(!hypDone(x.id)){H.moved[x.id]=addDays(x.date,delta);n++}
+  for(const [i,v] of Object.entries(H.moved)){const [,w,di]=i.split(':');if(v===hypBaseDate(+w,+di))delete H.moved[i]}
+  save('library');hypSchedule();closeModal();render();toast(`Moved to ${longDay(D)} ${shortDate(D)}${n?` · ${n} later session${n>1?'s':''} pushed ${delta>0?'back':'forward'} ${Math.abs(delta)} day${Math.abs(delta)>1?'s':''}`:''}`)};
+A.hypUnmove=el=>{const H=S.library.hyp;if(!H||!H.moved)return;delete H.moved[el.dataset.id];save('library');hypSchedule();closeModal();render();toast('Back on its planned day')};
 A.hypStop=()=>{hypClearCal();save('calendar');S.library.hyp=null;save('library');render();toast('Program ended. Your logged sessions are kept.')};
-A.hypPreview=el=>openModal({kind:'hypDay',id:el.dataset.id});
+A.hypPreview=el=>{openModal({kind:'hypDay',id:el.dataset.id});if(el.dataset.move)setTimeout(()=>{const b=$('#moveBox');if(b){b.scrollIntoView({behavior:'smooth',block:'center'});b.classList.add('flash')}},80)};
 A.hypMacros=()=>{S.profile.goal='gain';save('profile');const c=calcTargets(S.profile);if(!c){toast('Add your age, height and weight first');const el=['age','height','weight'].map(k=>document.querySelector(`[data-p="${k}"]`)).find(e=>e&&!e.value);if(el){el.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>el.focus({preventScroll:true}),400)}return}
   S.profile.targets={...c.train};S.profile.restTargets={...c.rest};save('profile');S.ui.td=null;render();toast(`Lean-bulk targets set: ${fmt(c.train.kcal)} kcal, ${c.train.p} g protein`)};
 A.bulkAdj=el=>{const k=+el.dataset.k;for(const key of ['targets','restTargets']){const T=S.profile[key];if(T){T.kcal=Math.round(T.kcal+k);T.c=Math.max(0,Math.round(T.c+k/4))}}save('profile');S.ui.td=null;render();toast(`${k>0?'Added':'Removed'} ${Math.abs(k)} kcal (carbs ${k>0?'+':'−'}${Math.abs(Math.round(k/4))} g)`)};
@@ -2616,7 +2683,7 @@ A.liveHide=()=>{S.ui.liveOpen=false;render()};
 A.liveDiscard=()=>{S.live=null;S.rest=null;S.timer=null;S.ui.liveOpen=false;persistLive();releaseWake();render();toast('Workout discarded')};
 A.liveFinish=()=>{const any=S.live.sections.some(s=>s.type==='regular'?s.items.some(it=>it.sets.some(x=>x.done)):!!s.result);if(!any&&!A._finArmed){A._finArmed=true;toast('No sets ticked yet. Tap Finish again to save anyway.');setTimeout(()=>A._finArmed=false,3000);return}A._finArmed=false;finishLive()};
 A.tick=el=>{const s=+el.dataset.s,i=+el.dataset.i,k=+el.dataset.k;const sec=S.live.sections[s],it=sec.items[i],st=it.sets[k];
-  st.done=!st.done;if(st.done){st.sug={};if(!st.reps&&firstNum(st.plan.reps))st.reps=String(topNum(st.plan.reps));const grpEnd=!it.link||i===sec.items.length-1;if(grpEnd&&(+it.rest||0)>0&&S.profile.autoRest!==false)startRest(+it.rest)}
+  st.done=!st.done;if(st.done){st.sug={};if(!st.reps&&firstNum(st.plan.reps))st.reps=String(topNum(st.plan.reps));if(S.profile.autoRest!==false){if(S.profile.restPlan){const grpEnd=!it.link||i===sec.items.length-1;if(grpEnd&&(+it.rest||0)>0)startRest(+it.rest)}else startRest(+S.profile.setRest||90)}}
   persistLive();render()};
 A.liveAddSet=el=>{const it=S.live.sections[+el.dataset.s].items[+el.dataset.i];const l=it.sets[it.sets.length-1];it.sets.push({plan:clone(l.plan),t:l.t==='W'?'N':l.t,done:false,w:l.w,reps:l.reps,rpe:'',rir:'',time:l.time,dist:l.dist,sug:{w:true,reps:true,time:true,dist:true}});persistLive();render()};
 A.liveHist=el=>{const it=S.live.sections[+el.dataset.s].items[+el.dataset.i];it.showHist=!it.showHist;render()};
@@ -2638,6 +2705,10 @@ A.sessDel=()=>{const{s,k}=findSess(S.modal.id);if(s){S.wlog[k].sessions=S.wlog[k
 // food logging
 A.addFood=el=>openModal({kind:'addFood',cat:el.dataset.cat,tab:'recipes',q:''});
 A.scanFor=el=>{const h=new Date().getHours();const cat=el.dataset.cat||(h<10?'breakfast':h<14?'lunch':h<20?'dinner':'snack');S.ui.date=S.ui.date||todayISO();openModal({kind:'addFood',cat,tab:'scan',q:''})};
+A.webFrom=()=>{const m=S.modal;m.web={q:m.q||'',res:[],tried:false};m.tab='web';renderModal();wqRun('db')};
+A.wqGo=()=>wqRun('db');A.wqClaude=()=>wqRun('claude');
+A.wqAdd=el=>{const k=+el.dataset.k,g=num($('#wqG-'+k).value)||100,f=wqFood(k),cat=S.modal.cat;logFood(S.ui.date,cat,{name:f.name,qty:`${r1(g)} g`,...scaleM(f,g/100)});closeModal();render();toast('Logged '+f.name+' · saved to your foods')};
+A.wqSave=el=>{const f=wqFood(+el.dataset.k);toast('Saved '+f.name+' to your foods')};
 A.afTab=el=>{S.modal.tab=el.dataset.v;S.modal.q='';renderModal()};
 Q.af=el=>{S.modal.q=el.value;$('#afList').innerHTML=afList(S.modal)};
 A.afRecipe=el=>{const r=getRecipe(el.dataset.id);const sv=num($('#sv-'+r.id).value)||1;const cat=S.modal.cat;logFood(S.ui.date,cat,{name:r.name,qty:`${sv} serving${sv==1?'':'s'}`,rid:r.id,...scaleM(recipeMacros(r),sv)});closeModal();render();toast('Logged '+r.name)};
@@ -2781,17 +2852,19 @@ A.restGo=el=>{closeAll();startRest(+el.dataset.s)};
 A.restGoCustom=()=>{const v=Math.max(5,Math.round(+$('#restCustom').value||75));S.profile.lastRest=v;save('profile');closeAll();startRest(v)};
 A.restAdj=el=>{if(!S.rest)return;S.rest.end+=(+el.dataset.d)*1000;const left=(S.rest.end-Date.now())/1000;if(left>S.rest.total)S.rest.total=Math.ceil(left);if(left<=0)S.rest=null;renderRest()};
 C.autoRest=el=>{S.profile.autoRest=el.checked;save('profile')};
+C.restPlan=el=>{S.profile.restPlan=el.value==='1';save('profile')};
+C.setRest=el=>{S.profile.setRest=Math.max(10,Math.round(+el.value||90));save('profile')};
 
 /* ================= events ================= */
 document.addEventListener('click',e=>{const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
   if(el.dataset.confirm&&!el.dataset.armed){e.preventDefault();el.dataset.armed='1';el._t=el.innerHTML;el.innerHTML=el.classList.contains('iconbtn')?'Sure?':'Tap again to confirm';el.classList.add('armed');setTimeout(()=>{if(el.isConnected&&el.dataset.armed){delete el.dataset.armed;el.innerHTML=el._t;el.classList.remove('armed')}},3000);return}
   const fn=A[el.dataset.act];if(fn){e.preventDefault();fn(el,e)}});
 $('#modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.modal)closeModal()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&S.modal)closeModal();if(e.key==='Enter'&&e.target&&e.target.id==='wqText'){e.preventDefault();wqRun('db')}});
 document.addEventListener('change',e=>{const el=e.target;if(el.dataset.c&&C[el.dataset.c]){C[el.dataset.c](el);return}
   if(el.tagName==='SELECT'){if(el.dataset.b){bindB(el);if(el.dataset.b==='s.type')render()}else if(el.dataset.p)bindP(el);else if(el.dataset.ri)bindRI(el)}});
 document.addEventListener('input',e=>{const el=e.target;if(el.tagName==='SELECT'||el.type==='checkbox'||el.type==='radio')return;const d=el.dataset;
-  if(d.b)bindB(el);else if(d.l)bindLive(el);else if(d.td)bindTD(el);else if(d.p)bindP(el);else if(d.r)bindR(el);else if(d.ri)bindRI(el);else if(d.q&&Q[d.q])Q[d.q](el)});
+  if(d.b)bindB(el);else if(d.l)bindLive(el);else if(d.td)bindTD(el);else if(d.p)bindP(el);else if(d.r)bindR(el);else if(d.ri)bindRI(el);else if(d.wq&&S.modal&&S.modal.web)S.modal.web.q=el.value;else if(d.wqg!=null&&S.modal&&S.modal.web){const k=+d.wqg,x=S.modal.web.res[k],g=num(el.value)||0,e=scaleM({kcal:x.kcal||0,p:x.p||0,c:x.c||0,f:x.f||0},g/100),t=$('#wqTot-'+k);if(t)t.textContent=`${r1(g)} g = ${fmt(e.kcal)} kcal · P ${r1(e.p)} · C ${r1(e.c)} · F ${r1(e.f)}`}else if(d.q&&Q[d.q])Q[d.q](el)});
 function bindB(el){const W=S.ui.editing;if(!W)return;const [scope,key]=el.dataset.b.split('.');const s=+el.dataset.s,i=+el.dataset.i,k=+el.dataset.k;let v=el.value;
   if(scope==='w'){W[key]=key==='tags'?v.split(',').map(x=>x.trim()).filter(Boolean):v;return}
   const sec=W.sections[s];if(scope==='s'){sec[key]=['rounds','work','rest','timeCap'].includes(key)?(v===''?'':+v):v;
