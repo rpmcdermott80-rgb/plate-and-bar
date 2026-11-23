@@ -9,7 +9,7 @@
 function pbIDB(){return new Promise((res,rej)=>{const r=indexedDB.open('plateandbar',1);r.onupgradeneeded=()=>r.result.createObjectStore('blobs');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
 window.LOCAL_ASSETS={async upload(blob){const id='local-'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);const db=await pbIDB();
   await new Promise((res,rej)=>{const tx=db.transaction('blobs','readwrite');tx.objectStore('blobs').put(blob,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)});return{id,url:'blob/'+id+'.jpg'}}};
-window.PB_VER='cc4ab688';
+window.PB_VER='eff581be';
 // check for a new version on every open; when the new service worker takes over, reload once onto it
 if('serviceWorker' in navigator){const had=!!navigator.serviceWorker.controller;let done=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!done){done=true;location.reload()}});
@@ -1221,14 +1221,31 @@ const isHypId=id=>String(id||'').startsWith('hyp:');
 function hypDeloadId(id){if(!isHypId(id))return false;const w=+String(id).split(':')[1];return w===4||w===8}
 function hypDayList(){const H=S.library.hyp;return H?HYP_DAYS.map((D,i)=>i).filter(i=>H.days===5||!HYP_DAYS[i].opt):[]}
 function hypBaseDate(w,di){return addDays(S.library.hyp.start,(w-1)*7+HYP_DAYS[di].wd)}
-// a session moved to another day (missed it, or swapped days) keeps its place in the program order
-function hypDate(w,di){const mv=S.library.hyp.moved||{};return mv[`hyp:${w}:${di}`]||hypBaseDate(w,di)}
+// Rolling schedule: the next session is always the one after the last session you finished, however many days you missed.
+// Finished sessions stay on the day you did them (with all their weights), sessions you jumped over are marked skipped,
+// and the sessions still to come are laid out from today onwards on your training weekdays.
 function hypDone(id){return allSessions().find(s=>s.workoutId===id)}
-function hypCurWeek(){const H=S.library.hyp;if(!H)return 0;const d=Math.floor((parseISO(todayISO())-parseISO(H.start))/864e5);return Math.min(12,Math.max(1,Math.floor(d/7)+1))}
-function hypAll(){const out=[];for(let w=1;w<=12;w++)for(const di of hypDayList())out.push({id:`hyp:${w}:${di}`,w,di,date:hypDate(w,di)});return out}
-function hypNext(){const t=todayISO();const all=hypAll().filter(x=>!hypDone(x.id));return all.find(x=>x.date===t)||all.find(x=>x.date>=t)||all[0]||null}
+let HYP_L=null;
+function hypLayout(){const H=S.library.hyp,t=todayISO();const ss=allSessions().filter(s=>isHypId(s.workoutId));
+  const key=[H.start,H.days,t,ss.length,ss.length?ss[ss.length-1].id:''].join('|');if(HYP_L&&HYP_L.key===key)return HYP_L;
+  const order=[];for(let w=1;w<=12;w++)for(const di of hypDayList())order.push({id:`hyp:${w}:${di}`,w,di});
+  const done={};ss.forEach(s=>{if(!done[s.workoutId])done[s.workoutId]=s});
+  const last=ss[ss.length-1],li=last?order.findIndex(x=>x.id===last.workoutId):-1;
+  const wds=new Set(hypDayList().map(di=>HYP_DAYS[di].wd));
+  let cur=ss.some(s=>s.date===t)?addDays(t,1):t;if(H.start>cur)cur=H.start;
+  const map={};let next=null;
+  order.forEach((x,i)=>{if(done[x.id]){map[x.id]={date:done[x.id].date,st:'done'};return}
+    if(i<li){map[x.id]={date:hypBaseDate(x.w,x.di),st:'skip'};return}
+    while(!wds.has(weekday(cur)))cur=addDays(cur,1);map[x.id]={date:cur,st:'todo'};if(!next)next=x.id;cur=addDays(cur,1)});
+  HYP_L={key,order,map,next};return HYP_L}
+function hypDate(w,di){const x=S.library.hyp&&hypLayout().map[`hyp:${w}:${di}`];return x?x.date:hypBaseDate(w,di)}
+function hypAll(){const L=hypLayout();return L.order.map(x=>({...x,date:L.map[x.id].date,skip:L.map[x.id].st==='skip'}))}
+function hypNext(){const H=S.library.hyp;if(!H)return null;const L=hypLayout();return L.next?hypAll().find(x=>x.id===L.next):null}
+function hypCurWeek(){const H=S.library.hyp;if(!H)return 0;const n=hypNext();return n?n.w:12}
+// keep the calendar in step with the rolling schedule (runs before each render, only when something changed)
+let HYP_SK='';function hypSync(){if(!S.library.hyp)return;const L=hypLayout();if(L.key!==HYP_SK){HYP_SK=L.key;hypSchedule()}}
 function hypClearCal(){for(const d of Object.keys(S.calendar.days)){const a=S.calendar.days[d].filter(x=>!isHypId(x));if(a.length)S.calendar.days[d]=a;else delete S.calendar.days[d]}}
-function hypSchedule(){hypClearCal();for(const x of hypAll())(S.calendar.days[x.date]=S.calendar.days[x.date]||[]).push(x.id);save('calendar')}
+function hypSchedule(){hypClearCal();for(const x of hypAll())if(!x.skip)(S.calendar.days[x.date]=S.calendar.days[x.date]||[]).push(x.id);save('calendar')}
 
 // weekly hard sets per muscle: primary muscles count 1, helpers 0.5
 const VOL_MUSCLES=['chest','lats','upperback','shoulders','reardelts','biceps','triceps','quads','hamstrings','glutes','calves','abs'];
@@ -1269,14 +1286,14 @@ function vBuild(){const H=S.library.hyp;
   const cw=hypCurWeek(),info=hypWeekInfo(cw),all=hypAll(),done=all.filter(x=>hypDone(x.id)).length,nx=hypNext(),t=todayISO();
   h+=`<div class="card"><div class="cardhead"><div><div class="eyebrow">Week ${cw} of 12 · Block ${info.block}: ${HYP_BLOCKS[info.block-1].n}</div><h2>${esc(info.label)}</h2></div><span class="mono">${done}/${all.length} sessions</span></div>
     <div class="pbar"><i style="width:${done/all.length*100}%"></i></div>
-    ${nx?`<div class="wcard hypnext"><div class="figstrip">${HYP_DAYS[nx.di].items.slice(0,3).map(([id])=>`<div class="figbox">${exPic(getEx(id))}</div>`).join('')}</div><div class="grow"><small>${nx.date===t?'Today':nx.date<t?'Missed · '+shortDate(nx.date):longDay(nx.date)+' '+shortDate(nx.date)}</small><br><b>Week ${nx.w} · ${HYP_DAYS[nx.di].name}</b><br><small>${HYP_DAYS[nx.di].focus}</small></div><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}" data-move="1">Change day</button><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}">Preview</button><button class="btn sm" data-act="start" data-id="${nx.id}" data-d="${nx.date<=t?t:nx.date}">Start</button></div>`:`<div class="pr">🏆 <span><b>Program complete!</b> Compare your key lifts below, then start again with heavier weights.</span></div>`}</div>`;
+    ${nx?`<div class="wcard hypnext"><div class="figstrip">${HYP_DAYS[nx.di].items.slice(0,3).map(([id])=>`<div class="figbox">${exPic(getEx(id))}</div>`).join('')}</div><div class="grow"><small>Up next${nx.date===t?' · today':''}</small><br><b>Week ${nx.w} · ${HYP_DAYS[nx.di].name}</b><br><small>${HYP_DAYS[nx.di].focus}</small></div><button class="btn ghost sm" data-act="hypPreview" data-id="${nx.id}">Preview</button><button class="btn sm" data-act="start" data-id="${nx.id}" data-d="${t}">Start</button></div>`:`<div class="pr">🏆 <span><b>Program complete!</b> Compare your key lifts below, then start again with heavier weights.</span></div>`}</div>`;
   // grid
   const days=hypDayList();
-  h+=`<div class="card"><div class="cardhead"><h2>${ico('cal')}12-week log</h2><span class="legend"><span><i class="lg done"></i>Done</span><span><i class="lg miss"></i>Missed</span><span><i class="lg dl"></i>Deload</span></span></div><div class="hgrid" style="--nd:${days.length}"><span></span>${days.map(di=>`<span class="hh">${HYP_DAYS[di].name.replace('Arms & Delts','Arms')}</span>`).join('')}`;
+  h+=`<div class="card"><div class="cardhead"><h2>${ico('cal')}12-week log</h2><span class="legend"><span><i class="lg done"></i>Done</span><span><i class="lg miss"></i>Skipped</span><span><i class="lg dl"></i>Deload</span></span></div><div class="hgrid" style="--nd:${days.length}"><span></span>${days.map(di=>`<span class="hh">${HYP_DAYS[di].name.replace('Arms & Delts','Arms')}</span>`).join('')}`;
   for(let w=1;w<=12;w++){const wi=hypWeekInfo(w);h+=`<span class="hw ${w===cw?'cur':''}">W${w}</span>`;
-    for(const di of days){const id=`hyp:${w}:${di}`,d=hypDate(w,di),s=hypDone(id);const st=s?'done':d<t?'miss':d===t?'today':'';
-      h+=`<button class="hc ${st} ${wi.deload?'dl':''} ${wi.test?'ts':''}" data-act="${s?'viewSess':'hypPreview'}" data-id="${s?s.id:id}" title="${esc(`Week ${w} ${HYP_DAYS[di].name}, ${shortDate(d)}`)}">${s?'✓':parseISO(d).getDate()}</button>`}}
-  h+=`</div><small>Tap a session to preview, start or move it to another day. Missed a day? Open the session, pick the day you'll do it, and push the rest back if you like.</small></div>`;
+    for(const di of days){const id=`hyp:${w}:${di}`,d=hypDate(w,di),s=hypDone(id),sk=!s&&hypLayout().map[id].st==='skip';const st=s?'done':sk?'miss':id===(nx&&nx.id)?'today':'';
+      h+=`<button class="hc ${st} ${wi.deload?'dl':''} ${wi.test?'ts':''}" data-act="${s?'viewSess':'hypPreview'}" data-id="${s?s.id:id}" title="${esc(`Week ${w} ${HYP_DAYS[di].name}, ${sk?'skipped':shortDate(d)}`)}">${s?'✓':sk?'–':parseISO(d).getDate()}</button>`}}
+  h+=`</div><small>Missed a day? No problem: the next session is always the one after the last one you finished, and the rest move along with it. Your logged weights are kept, so the app still suggests what to lift. Tap any session to preview or start it.</small></div>`;
   // volume
   const ws=addDays(H.start,(cw-1)*7);h+=`<div class="card"><div class="cardhead"><h2>${ico('progress')}Weekly volume</h2><span class="muted sm">Week ${cw} · hard sets per muscle</span></div>${volBars(hypPlannedVol(cw),doneVol(ws,addDays(ws,6)))}</div>`;
   // key lifts
@@ -1288,7 +1305,7 @@ function vBuild(){const H=S.library.hyp;
   return h+bulkCard()+`<div class="row" style="justify-content:flex-end"><button class="btn ghost sm danger" data-act="hypStop" data-confirm="1">End 12-week program</button></div>`}
 
 function mHypDay(m){const W=hypWorkout(m.id);if(!W)return mhead('Session');const {w,d,info}=W.hyp;const H=S.library.hyp;const date=H?hypDate(w,d):todayISO();const s=H&&hypDone(m.id);const t=todayISO();
-  let h=mhead(esc(W.name))+`<small>${esc(HYP_DAYS[d].focus)} · ${esc(info.label)}${H?' · '+longDay(date)+' '+shortDate(date):''}</small>
+  let h=mhead(esc(W.name))+`<small>${esc(HYP_DAYS[d].focus)} · ${esc(info.label)}${H&&!s&&hypLayout().map[m.id]?.st==='skip'?' · skipped':H?' · '+longDay(date)+' '+shortDate(date):''}</small>
   <div class="tipbox">${info.deload?'<b>Deload week.</b> Half the sets at about 85% of your weights. Leave the gym feeling fresh; this is when the growth catches up.':info.test?'<b>Test week.</b> Work up to a heavy top set of 3–5 reps on the main lifts and compare your estimated 1RM with week 1.':`<b>Effort:</b> finish each set with about ${info.rir} rep${info.rir===1?'':'s'} left in the tank (RIR ${info.rir}). When you hit the top of the rep range on every set, the app suggests more weight next time.`}</div>`;
   W.sections.forEach(sec=>{h+=`<div class="eyebrow">${esc(sec.title)}</div>`;const labels=groupLabels(sec.items);
     sec.items.forEach((it,i)=>{const ex=getEx(it.exId);const ws=it.sets.filter(x=>x.t==='N'),wu=it.sets.filter(x=>x.t==='W').length,dr=it.sets.some(x=>x.t==='D');
@@ -1296,8 +1313,8 @@ function mHypDay(m){const W=hypWorkout(m.id);if(!W)return mhead('Session');const
       h+=`<div class="hex ${it.link?'linked':''}"><button class="hexph" data-act="exInfo" data-id="${ex.id}" aria-label="How to do ${esc(ex.name)}">${exPic(ex)}</button><div class="grow"><span class="lab">${labels[i]}</span> <b>${esc(ex.name)}</b>
         <div class="mono sm">${wu?wu+' warm-up + ':''}${ws.length} × ${esc(reps)}${dr?' + drop set':''} · RIR ${esc(ws[ws.length-1]?.rir??info.rir)} · rest ${it.link&&i<sec.items.length-1?'none, superset':it.rest+'s'}</div>
         <small>${esc(it.note)}</small><br><button class="linkbtn" data-act="exInfo" data-id="${ex.id}">Technique, muscles & mistakes →</button></div></div>`})});
-  h+=`<div class="row">${s?`<button class="btn ghost" data-act="viewSess" data-id="${s.id}">✓ View logged session</button>`:`<button class="btn" data-act="start" data-id="${m.id}" data-d="${date<=t?t:date}">Start this session</button>`}</div>`;
-  if(H&&!s){const moved=(H.moved||{})[m.id];h+=`<div class="movebox" id="moveBox"><div><b>${date<t?'Missed this one?':'Need a different day?'}</b><small>Pick the day you'll do it. ${moved?`Moved from ${longDay(hypBaseDate(w,d))} ${shortDate(hypBaseDate(w,d))}.`:''}</small></div>
+  h+=`<div class="row">${s?`<button class="btn ghost" data-act="viewSess" data-id="${s.id}">✓ View logged session</button>`:`<button class="btn" data-act="start" data-id="${m.id}" data-d="${t}">Start this session</button>`}</div>`;
+  if(false){const moved=(H.moved||{})[m.id];h+=`<div class="movebox" id="moveBox"><div><b>${date<t?'Missed this one?':'Need a different day?'}</b><small>Pick the day you'll do it. ${moved?`Moved from ${longDay(hypBaseDate(w,d))} ${shortDate(hypBaseDate(w,d))}.`:''}</small></div>
     <div class="row"><label>Do it on<input type="date" id="hypMoveD" value="${date<t?t:date}"></label><button class="btn sm" data-act="hypMove" data-id="${m.id}">Move session</button></div>
     <label class="inline"><input type="checkbox" id="hypMoveShift" ${date<t?'checked':''}> Push the sessions after it back by the same number of days</label>
     ${moved?`<button class="linkbtn" data-act="hypUnmove" data-id="${m.id}">Back to its planned day</button>`:''}</div>`}
@@ -2009,6 +2026,7 @@ function genFlex(){const G=S.nutrition.gen,mode=S.profile.macroMode,T=S.profile.
 
 /* ================= views: shell ================= */
 function render(){
+  try{hypSync()}catch(e){}
   document.querySelectorAll('[data-act="tab"]').forEach(b=>b.setAttribute('aria-current',(b.dataset.tab===S.ui.tab&&!S.ui.liveOpen)?'page':'false'));
   let h='';
   if(S.ui.liveOpen&&S.live)h=vLive();
@@ -2058,7 +2076,9 @@ function trainCard(d){const ids=S.calendar.days[d]||[];const sess=sessionsOn(d);
       ${done?`<button class="btn ghost sm" data-act="viewSess" data-id="${done.id}">✓ View</button>`:live?`<button class="btn sm" data-act="liveOpen">Resume</button>`:`<button class="btn sm" data-act="start" data-id="${wid}" data-d="${d}">Start</button>`}
       <button class="iconbtn" data-act="calRemove" data-d="${d}" data-i="${idx}" aria-label="Remove from day">✕</button></div>`});
   sess.filter(s=>!ids.includes(s.workoutId)).forEach(s=>{h+=`<div class="wcard done"><div class="grow"><b>${esc(s.name)}</b><br><small>Logged · ${clock(s.dur)}</small></div><button class="btn ghost sm" data-act="viewSess" data-id="${s.id}">✓ View</button></div>`});
-  if(!ids.length&&!sess.length)h+=`<span class="muted sm">No workout scheduled. Rest, or add one below.</span>`;
+  const nx=S.library.hyp&&d===todayISO()&&!sess.some(s=>isHypId(s.workoutId))?hypNext():null;
+  if(nx&&!ids.includes(nx.id)){const w=getWorkout(nx.id);h+=`<div class="wcard">${figStrip(w,2)}<div class="grow"><small>Up next in your 12-week build · planned ${esc(longDay(nx.date))}</small><br><b>${esc(w.name)}</b></div><button class="btn ghost sm" data-act="start" data-id="${nx.id}" data-d="${d}">Do it today</button></div>`}
+  else if(!ids.length&&!sess.length)h+=`<span class="muted sm">No workout scheduled. Rest, or add one below.</span>`;
   if(S.library.workouts.length)h+=`<select data-c="schedDay" data-d="${d}" aria-label="Add a workout to this day"><option value="">+ Add a workout to this day…</option>${S.library.workouts.map(w=>`<option value="${w.id}">${esc(w.name)}</option>`).join('')}</select>`;
   return h+`</div>`}
 function figStrip(w,n){const ids=[...new Set(w.sections.flatMap(s=>s.items.map(it=>it.exId)))].slice(0,n);return`<div class="figstrip">${ids.map(id=>`<div class="figbox">${exPic(getEx(id))}</div>`).join('')}</div>`}
